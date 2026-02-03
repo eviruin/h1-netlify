@@ -21,15 +21,23 @@ exports.handler = async (event, context) => {
     if (fs.existsSync(target)) {
       const stat = fs.lstatSync(target);
       results.nf_req_stat = {
-        isSocket: stat.isSocket(),
-        isFIFO: stat.isFIFO(),
-        isFile: stat.isFile(),
+        type: stat.isDirectory() ? "DIRECTORY" : "OTHER",
         mode: stat.mode,
-        size: stat.size
       };
       
-      if (stat.isFile() && stat.size > 0) {
-        results.nf_req_content = fs.readFileSync(target, 'utf8').substring(0, 200);
+      if (stat.isDirectory()) {
+        results.nf_req_files = fs.readdirSync(target);
+        
+        results.nf_req_details = {};
+        results.nf_req_files.forEach(file => {
+            const filePath = `${target}/${file}`;
+            const fileStat = fs.lstatSync(filePath);
+            if (fileStat.isFile()) {
+                results.nf_req_details[file] = fs.readFileSync(filePath, 'utf8').substring(0, 100);
+            } else {
+                results.nf_req_details[file] = "Sub-directory/Socket";
+            }
+        });
       }
     } else {
       results.nf_req_stat = "Not Found";
