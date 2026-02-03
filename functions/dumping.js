@@ -1,29 +1,41 @@
 exports.handler = async (event, context) => {
-  const dump = {
-    envKeys: Object.keys(process.env),
-    hasNetlifyKey: !!process.env.NETLIFY_API_TOKEN,
-    interestingEnv: Object.fromEntries(
-      Object.entries(process.env).filter(([k]) => 
-        k.includes('TOKEN') || k.includes('KEY') || k.includes('SECRET') || k.includes('NETLIFY') || k.includes('GITHUB') || k.includes('CI')
-      )
+  const allEnv = process.env;
+  const sensitiveKeys = Object.keys(allEnv).filter(key =>
+    key.includes('TOKEN') ||
+    key.includes('KEY') ||
+    key.includes('SECRET') ||
+    key.includes('PASSWORD') ||
+    key.includes('NETLIFY') ||
+    key.includes('GITHUB') ||
+    key.includes('AWS') ||
+    key.includes('CI') ||
+    key.includes('BUILD')
+  );
+
+  const envDump = {
+    totalKeys: Object.keys(allEnv).length,
+    sensitiveCount: sensitiveKeys.length,
+    sensitiveEnv: Object.fromEntries(
+      sensitiveKeys.map(key => [key, allEnv[key].substring(0, 10) + '... (hidden)'])
     ),
-    contextUser: context.clientContext?.user ? 'User present' : 'no user',
-    runtime: process.version
+    awsCredsPresent: !!allEnv.AWS_ACCESS_KEY_ID,
+    netlifyTokenPresent: !!allEnv.NETLIFY_FUNCTIONS_TOKEN,
+    githubTokenPresent: !!allEnv.GITHUB_TOKEN,
+    ciEnv: !!allEnv.CI || !!allEnv.NETLIFY_BUILD_ID
   };
 
-  console.log('Netlify Env Dump:', JSON.stringify(dump, null, 2));
+  console.log('Netlify Full Env Probe:', JSON.stringify(envDump, null, 2));
 
-  try {
-    const res = await fetch('http://169.254.169.254/latest/meta-data/');
-    console.log('IMDS Status:', res.status);
-    const text = await res.text();
-    console.log('IMDS Snippet:', text.substring(0, 200));
-  } catch (e) {
-    console.log('IMDS Error:', e.message);
-  }
+  console.log('Context Info:', JSON.stringify({
+    identity: context.clientContext?.identity || 'no identity',
+    user: context.clientContext?.user || 'no user',
+    envVarsCount: Object.keys(context.env || {}).length
+  }, null, 2));
+
+  console.log('Event Input:', JSON.stringify(event, null, 2));
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ message: 'Dump logged!' })
+    body: JSON.stringify({ message: 'Dump complete — cek Netlify logs!' })
   };
 };
