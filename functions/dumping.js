@@ -24,18 +24,16 @@ exports.handler = async (event, context) => {
     ciEnv: !!allEnv.CI || !!allEnv.NETLIFY_BUILD_ID
   };
 
-  console.log('Netlify Full Env Probe:', JSON.stringify(envDump, null, 2));
-
-  console.log('Context Info:', JSON.stringify({
-    identity: context.clientContext?.identity || 'no identity',
-    user: context.clientContext?.user || 'no user',
-    envVarsCount: Object.keys(context.env || {}).length
-  }, null, 2));
+  console.log('Netlify Env Probe:', JSON.stringify(envDump, null, 2));
+a)
+  console.log('All Context:', JSON.stringify(context, null, 2));
+  console.log('Client Context:', JSON.stringify(context.clientContext, null, 2));
+  console.log('Lambda Context / Identity:', JSON.stringify(context.identity, null, 2));
 
   console.log('Event Input:', JSON.stringify(event, null, 2));
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ message: 'Dump complete — cek Netlify logs!' })
+    body: JSON.stringify({ message: 'Dumping done...' })
   };
 };
