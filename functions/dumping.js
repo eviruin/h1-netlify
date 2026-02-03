@@ -1,39 +1,33 @@
+const fs = require('fs');
+
 exports.handler = async (event, context) => {
-  const allEnv = process.env;
-  const sensitiveKeys = Object.keys(allEnv).filter(key =>
-    key.includes('TOKEN') ||
-    key.includes('KEY') ||
-    key.includes('SECRET') ||
-    key.includes('PASSWORD') ||
-    key.includes('NETLIFY') ||
-    key.includes('GITHUB') ||
-    key.includes('AWS') ||
-    key.includes('CI') ||
-    key.includes('BUILD')
-  );
+  const paths = [
+    '/etc/hostname',
+    '/var/task',
+    '/proc/self/environ',
+    '/tmp'
+  ];
 
-  const envDump = {
-    totalKeys: Object.keys(allEnv).length,
-    sensitiveCount: sensitiveKeys.length,
-    sensitiveEnv: Object.fromEntries(
-      sensitiveKeys.map(key => [key, allEnv[key].substring(0, 10) + '... (hidden)'])
-    ),
-    awsCredsPresent: !!allEnv.AWS_ACCESS_KEY_ID,
-    netlifyTokenPresent: !!allEnv.NETLIFY_FUNCTIONS_TOKEN,
-    githubTokenPresent: !!allEnv.GITHUB_TOKEN,
-    ciEnv: !!allEnv.CI || !!allEnv.NETLIFY_BUILD_ID
-  };
-
-  console.log('Netlify Full Env Probe:', JSON.stringify(envDump, null, 2));
-
-  console.log('Full Context:', JSON.stringify(context, null, 2));
-  console.log('Client Context:', JSON.stringify(context.clientContext, null, 2));
-  console.log('Lambda Context / Identity:', JSON.stringify(context.identity, null, 2));
-
-  console.log('Event Input:', JSON.stringify(event, null, 2));
+  const fileDetails = {};
+  paths.forEach(p => {
+    try {
+      fileDetails[p] = fs.readdirSync(p);
+    } catch (e) {
+      try {
+        fileDetails[p] = fs.readFileSync(p, 'utf8').substring(0, 50);
+      } catch (err) {
+        fileDetails[p] = `Error: ${err.message}`;
+      }
+    }
+  });
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ message: 'Dumping done...' })
+    body: JSON.stringify({ 
+        msg: "Diving deeper...", 
+        files: fileDetails,
+        uid: process.getuid(),
+        gid: process.getgid()
+    })
   };
 };
