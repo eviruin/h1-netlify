@@ -24,9 +24,9 @@ exports.handler = async (event, context) => {
     ciEnv: !!allEnv.CI || !!allEnv.NETLIFY_BUILD_ID
   };
 
-  console.log('Netlify Env Probe:', JSON.stringify(envDump, null, 2));
-a)
-  console.log('All Context:', JSON.stringify(context, null, 2));
+  console.log('Netlify Full Env Probe:', JSON.stringify(envDump, null, 2));
+
+  console.log('Full Context:', JSON.stringify(context, null, 2));
   console.log('Client Context:', JSON.stringify(context.clientContext, null, 2));
   console.log('Lambda Context / Identity:', JSON.stringify(context.identity, null, 2));
 
