@@ -33,7 +33,7 @@ exports.handler = async (event, context) => {
     const options = {
       hostname: '169.254.169.254',
       path: '/latest/meta-data/',
-      headers: { 'Metadata-Flavor': 'Google' }, // Iseng kalau ternyata ini GCP-base
+      headers: { 'Metadata-Flavor': 'Google' },
       timeout: 1000
     };
     http.get(options, (res) => resolve(`Found with Header! Status: ${res.statusCode}`))
